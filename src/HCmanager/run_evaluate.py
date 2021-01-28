@@ -45,6 +45,7 @@ powerset = 2**NleavesMin
 # flags.DEFINE_string('a_star_trellis_class', 'IterJetTrellis', 'Type of Algorithm')
 # flags.DEFINE_string('trellis_class', 'Approx_IterJetTrellis', 'Type of Algorithm')
 
+# flags.DEFINE_string("wandb_dir", "/scratch/sm4511/HCmanager/wandb", "wandb directory - If running seewp process, run it from there")
 flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager", "wandb directory - If running seewp process, run it from there")
 # flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
 flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
