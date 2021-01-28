@@ -45,7 +45,7 @@ powerset = 2**NleavesMin
 # flags.DEFINE_string('a_star_trellis_class', 'IterJetTrellis', 'Type of Algorithm')
 # flags.DEFINE_string('trellis_class', 'Approx_IterJetTrellis', 'Type of Algorithm')
 
-flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HC-manager", "wandb directory - If running seewp process, run it from there")
+flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager", "wandb directory - If running seewp process, run it from there")
 # flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
 flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
 # flags.DEFINE_string('dataset', "test_" + str(NleavesMin) + "_jets.pkl", 'dataset filename')
@@ -86,7 +86,8 @@ class GinkgoEvaluator:
 
         # if os.path.exists(filename) and not redraw_existing_jets:
         self.trees = self._load()[0:3]
-        # logging.info("Trees = %s", self.trees)
+        logging.info("# Trees = %s", len(self.trees))
+        logging.info("========"*5)
         # else:
         #     self.n_jets = n_jets
         #     self.jets = self._init_jets()
@@ -103,8 +104,10 @@ class GinkgoEvaluator:
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
     def eval_greedy(self, method):
-        log_likelihoods = [self._compute_greedy_log_likelihood(jet)[0] for jet in self.trees]
-        times = [self._compute_greedy_log_likelihood(jet)[1] for jet in self.trees]
+        temp = np.asarray([self._compute_greedy_log_likelihood(jet) for jet in self.trees])
+        temp = temp.transpose()
+        log_likelihoods = temp[0]
+        times = temp[1]
         illegal_actions = [0 for _ in self.trees]
         likelihood_evaluations = [
             self._compute_greedy_likelihood_evaluations(jet) for jet in self.trees
@@ -114,8 +117,10 @@ class GinkgoEvaluator:
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
     def eval_beam_search(self, method, beam_size=4):
-        log_likelihoods = [self._compute_beam_search_log_likelihood(jet, beam_size)[0] for jet in self.trees]
-        times = [self._compute_beam_search_log_likelihood(jet, beam_size)[1] for jet in self.trees]
+        temp = np.asarray([self._compute_beam_search_log_likelihood(jet) for jet in self.trees])
+        temp = temp.transpose()
+        log_likelihoods = temp[0]
+        times = temp[1]
         illegal_actions = [0 for _ in self.trees]
         likelihood_evaluations = [
             self._compute_beam_search_likelihood_evaluations(jet, beam_size) for jet in self.trees
@@ -125,8 +130,10 @@ class GinkgoEvaluator:
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
     def eval_exact_trellis(self, method):
-        log_likelihoods = [self._compute_exact_trellis_log_likelihood(jet)[0] for jet in self.trees]
-        times = [self._compute_exact_trellis_log_likelihood(jet)[1] for jet in self.trees]
+        temp = np.asarray([self._compute_exact_trellis_log_likelihood(jet) for jet in self.trees])
+        temp = temp.transpose()
+        log_likelihoods = temp[0]
+        times = temp[1]
         illegal_actions = [0 for _ in self.trees]
         likelihood_evaluations = [0 for _ in self.trees]
         self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
@@ -135,8 +142,15 @@ class GinkgoEvaluator:
 
 
     def eval_exact_a_star(self, method):
-        log_likelihoods = [self._compute_a_star_log_likelihood(jet)[0] for jet in self.trees]
-        times = [self._compute_a_star_log_likelihood(jet)[1] for jet in self.trees]
+        temp = np.asarray([self._compute_a_star_log_likelihood(jet) for jet in self.trees])
+        temp = temp.transpose()
+        log_likelihoods = temp[0]
+        times = temp[1]
+        logging.info("log LH = %s", log_likelihoods)
+        logging.info("times = %s", times)
+        logging.info("+++++++"*10)
+        # log_likelihoods = [self._compute_a_star_log_likelihood(jet)[0] for jet in self.trees]
+        # times = [self._compute_a_star_log_likelihood(jet)[1] for jet in self.trees]
         illegal_actions = [0 for _ in self.trees]
         likelihood_evaluations = [0 for _ in self.trees]
         self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
@@ -144,8 +158,10 @@ class GinkgoEvaluator:
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
     def eval_approx_a_star(self, method):
-        log_likelihoods = [self._compute_approx_a_star_log_likelihood(jet)[0] for jet in self.trees]
-        times = [self._compute_approx_a_star_log_likelihood(jet)[1] for jet in self.trees]
+        temp = np.asarray([self._compute_approx_a_star_log_likelihood(jet) for jet in self.trees])
+        temp = temp.transpose()
+        log_likelihoods = temp[0]
+        times = temp[1]
         illegal_actions = [0 for _ in self.trees]
         likelihood_evaluations = [0 for _ in self.trees]
         self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
@@ -200,7 +216,7 @@ class GinkgoEvaluator:
 
         Time = time.time() - startTime
 
-        return sum(greedy_jet["logLH"]), Time
+        return [sum(greedy_jet["logLH"]), Time]
 
 
     @staticmethod
@@ -220,7 +236,7 @@ class GinkgoEvaluator:
 
         Time = time.time() - startTime
 
-        return sum(bs_jet["logLH"]), Time
+        return [sum(bs_jet["logLH"]), Time]
 
 
     @staticmethod
@@ -248,7 +264,7 @@ class GinkgoEvaluator:
 
         Time = time.time() - startTime
 
-        return map_energy, Time
+        return [map_energy, Time]
 
 
     @staticmethod
@@ -274,8 +290,9 @@ class GinkgoEvaluator:
         logging.info(f'total time = {Time}')
         logging.info(f'FINAL f ={MAP_value}')
         logging.info("-------------------------------------------")
+        logging.info("=====++++++" * 5)
 
-        return MAP_value, Time
+        return [MAP_value, Time]
 
 
     @staticmethod
@@ -303,7 +320,7 @@ class GinkgoEvaluator:
         logging.info(f'FINAL f ={MAP_value}')
         logging.info("-------------------------------------------")
 
-        return MAP_value, Time
+        return [MAP_value, Time]
 
 
     #-------------
