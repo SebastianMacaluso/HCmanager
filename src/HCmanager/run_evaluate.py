@@ -42,7 +42,7 @@ tcut=2.5
 Ntrees = 5
 # powerset = 2**NleavesMin
 
-flags.DEFINE_integer('NleavesMin', 4, 'Number of elements of the trees datasets')
+flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
 # flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
 flags.mark_flag_as_required('NleavesMin')
 # flags.DEFINE_integer('id', 0, 'job id (to run on HPC')
@@ -50,12 +50,13 @@ flags.mark_flag_as_required('NleavesMin')
 # flags.DEFINE_string('a_star_trellis_class', 'IterJetTrellis', 'Type of Algorithm')
 # flags.DEFINE_string('trellis_class', 'Approx_IterJetTrellis', 'Type of Algorithm')
 
-# flags.DEFINE_string("wandb_dir", "/scratch/sm4511/HCmanager/wandb", "wandb directory - If running seewp process, run it from there")
+# flags.DEFINE_string("wandb_dir", "/scratch/sm4511/HCmanager", "wandb directory - If running seewp process, run it from there")
 flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager", "wandb directory - If running seewp process, run it from there")
 # flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
 
 flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
 flags.DEFINE_string('dataset', "jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'dataset filename')
+# flags.DEFINE_string('dataset', "jets_6N_10trees_25tcut_0.pkl", 'dataset filename')
 
 flags.DEFINE_string('output_dir', "../../data/Ginkgo/output/", "output dir ")
 flags.DEFINE_string('results_filename', "out_jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'results filename')
@@ -74,7 +75,7 @@ flags.DEFINE_integer('propagate_values_up', 0, 'whether to propagate f,g,h value
 
 FLAGS = flags.FLAGS
 
-logging.set_verbosity(logging.INFO)
+logging.set_verbosity(logging.WARNING)
 
 
 
@@ -199,9 +200,9 @@ class GinkgoEvaluator:
         return data
 
     def save(self):
-        out_filename = os.path.join(FLAGS.output_dir, FLAGS.results_filename)
+        out_file = os.path.join(FLAGS.output_dir,FLAGS.results_filename )
         if os.path.exists(FLAGS.output_dir):
-            with open(out_filename, "wb") as f:
+            with open(out_file, "wb") as f:
                 pickle.dump((self.tree_size,self.log_likelihoods, self.illegal_actions,self.times, self.likelihood_evaluations ), f, protocol=2)
 
 
@@ -364,6 +365,7 @@ def main(argv):
     wandb.init(project="%s" % (FLAGS.exp_name), dir=FLAGS.wandb_dir)
     wandb.config.update(flags.FLAGS)
     np.random.seed(FLAGS.seed)
+    os.system("mkdir -p "+FLAGS.output_dir)
     max_nodes = 2 ** FLAGS.NleavesMin + 10
     beam_size = 3 * FLAGS.NleavesMin
 

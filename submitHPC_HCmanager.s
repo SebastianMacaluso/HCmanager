@@ -22,7 +22,7 @@ mkdir -p logs
 singularity exec --nv \
 	    --overlay /scratch/sm4511/pytorch1.7.0-cuda11.0.ext3:ro \
 	    /scratch/work/public/singularity/cuda11.0-cudnn8-devel-ubuntu18.04.sif \
-	    bash -c "source /ext3/env.sh; python $SCRATCH/HCmanager/src/HCmanager/run_evaluate.py --dataset_dir=$SCRATCH/ginkgo/data/invMassGinkgo/ --dataset=jets_6N_10trees_25tcut_${SLURM_ARRAY_TASK_ID}.pkl --NleavesMin=6 --output_dir=$SCRATCH/HCmanager/experiments/ginkgo/ --results_filename=outjets_6N_10trees_25tcut_${SLURM_ARRAY_TASK_ID}.pkl"
+	    bash -c "source /ext3/env.sh; python $SCRATCH/HCmanager/src/HCmanager/run_evaluate.py --dataset_dir=$SCRATCH/ginkgo/data/invMassGinkgo/ --dataset=jets_6N_10trees_25tcut_${SLURM_ARRAY_TASK_ID}.pkl --NleavesMin=6 --output_dir=$SCRATCH/HCmanager/experiments/ginkgo/ --results_filename=outjets_6N_10trees_25tcut_${SLURM_ARRAY_TASK_ID}.pkl --wandb_dir=$SCRATCH/HCmanager"
 
 
 
