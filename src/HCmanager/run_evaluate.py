@@ -50,6 +50,8 @@ if HPC:
     flags.DEFINE_string('dataset',
                         "jets_" + str(NleavesMin) + "N_" + str(Ntrees) + "trees_" + str(int(10 * tcut)) + "tcut_.pkl",
                         'dataset filename')
+    # flags.DEFINE_string('dataset', "jets_6N_10trees_25tcut_0.pkl", 'dataset filename')
+    flags.DEFINE_string("wandb_dir", "/scratch/sm4511/HCmanager", "wandb directory - If running seewp process, run it from there")
     # flags.DEFINE_string('output_dir', "../../data/Ginkgo/output/", "output dir ")
     # flags.DEFINE_string('results_filename', "out_jets_" + str(NleavesMin) + "N_" + str(Ntrees) + "trees_" + str(
     #     int(10 * tcut)) + "tcut_.pkl", 'results filename')
@@ -62,6 +64,9 @@ else:
     # flags.DEFINE_string('dataset', "jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'dataset filename')
     # flags.DEFINE_string('dataset', "jets_6N_10trees_25tcut_0.pkl", 'dataset filename')
     flags.DEFINE_string('dataset', "test_" + str(NleavesMin) + "_jets.pkl", 'dataset filename')
+    flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager",
+                        "wandb directory - If running seewp process, run it from there")
+
 
 flags.mark_flag_as_required('NleavesMin')
 # flags.DEFINE_integer('id', 0, 'job id (to run on HPC')
@@ -69,8 +74,8 @@ flags.mark_flag_as_required('NleavesMin')
 # flags.DEFINE_string('a_star_trellis_class', 'IterJetTrellis', 'Type of Algorithm')
 # flags.DEFINE_string('trellis_class', 'Approx_IterJetTrellis', 'Type of Algorithm')
 
-# flags.DEFINE_string("wandb_dir", "/scratch/sm4511/HCmanager", "wandb directory - If running seewp process, run it from there")
-flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager", "wandb directory - If running seewp process, run it from there")
+
+
 
 
 
