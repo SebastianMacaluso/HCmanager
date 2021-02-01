@@ -27,8 +27,8 @@ from ClusterTrellis.trellis_node import TrellisNode
 from ClusterTrellis.Ginkgo_node import ModelNode
 
 """ A star trellis """
-from AstarTrellis.iter_trellis3 import IterJetTrellis
-from AstarTrellis.iter_trellis_maxSteps import IterJetTrellis as ApproxIterJetTrellis
+from AstarTrellis.iter_trellis_exact import IterJetTrellis
+from AstarTrellis.iter_trellis_approx import IterJetTrellis as ApproxIterJetTrellis
 
 """Replace with model auxiliary scripts to calculate the energy function"""
 # from ClusterTrellis import Ginkgo_likelihood as likelihood
@@ -37,13 +37,32 @@ from AstarTrellis.iter_trellis_maxSteps import IterJetTrellis as ApproxIterJetTr
 # from ClusterTrellis.utils import get_logger
 # logger = logging.get_logger(level=logging.WARNING)
 
-NleavesMin=4
+NleavesMin=9
 tcut=2.5
 Ntrees = 5
 # powerset = 2**NleavesMin
 
-flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
-# flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
+
+HPC=False
+if HPC:
+    flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
+    flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
+    flags.DEFINE_string('dataset',
+                        "jets_" + str(NleavesMin) + "N_" + str(Ntrees) + "trees_" + str(int(10 * tcut)) + "tcut_.pkl",
+                        'dataset filename')
+    # flags.DEFINE_string('output_dir', "../../data/Ginkgo/output/", "output dir ")
+    # flags.DEFINE_string('results_filename', "out_jets_" + str(NleavesMin) + "N_" + str(Ntrees) + "trees_" + str(
+    #     int(10 * tcut)) + "tcut_.pkl", 'results filename')
+
+else:
+    flags.DEFINE_integer('NleavesMin', 9, 'Number of elements of the trees datasets')
+    # flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
+    flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
+    # flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
+    # flags.DEFINE_string('dataset', "jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'dataset filename')
+    # flags.DEFINE_string('dataset', "jets_6N_10trees_25tcut_0.pkl", 'dataset filename')
+    flags.DEFINE_string('dataset', "test_" + str(NleavesMin) + "_jets.pkl", 'dataset filename')
+
 flags.mark_flag_as_required('NleavesMin')
 # flags.DEFINE_integer('id', 0, 'job id (to run on HPC')
 
@@ -52,11 +71,8 @@ flags.mark_flag_as_required('NleavesMin')
 
 # flags.DEFINE_string("wandb_dir", "/scratch/sm4511/HCmanager", "wandb directory - If running seewp process, run it from there")
 flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager", "wandb directory - If running seewp process, run it from there")
-# flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
 
-flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
-flags.DEFINE_string('dataset', "jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'dataset filename')
-# flags.DEFINE_string('dataset', "jets_6N_10trees_25tcut_0.pkl", 'dataset filename')
+
 
 flags.DEFINE_string('output_dir', "../../data/Ginkgo/output/", "output dir ")
 flags.DEFINE_string('results_filename', "out_jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'results filename')
@@ -72,10 +88,12 @@ flags.DEFINE_integer('num_repeated_map_values', 0, 'number of times the same MAP
 flags.DEFINE_integer('propagate_values_up', 0, 'whether to propagate f,g,h values during trellis extension.')
 # flags.DEFINE_integer("beam_size", 3*NleavesMin, "Beam size") #Beam Search
 
+flags.DEFINE_integer('all_pairs_max_size', 9, 'Maximum number of elements of a node to run the exact algorithm')
+flags.DEFINE_multi_integer('num_tries', [5,2], '')
 
 FLAGS = flags.FLAGS
 
-logging.set_verbosity(logging.WARNING)
+logging.set_verbosity(logging.INFO)
 
 
 
@@ -92,7 +110,7 @@ class GinkgoEvaluator:
         self.tree_size = []
 
         # if os.path.exists(filename) and not redraw_existing_jets:
-        self.trees = self._load()[0:3]
+        self.trees = self._load()[1:2]
         logging.info("# Trees = %s", len(self.trees))
         logging.info("========"*5)
         # else:
@@ -319,8 +337,9 @@ class GinkgoEvaluator:
                                        LambdaRoot=gt_jet['LambdaRoot'])
 
         hc, MAP_value, step = trellis.execute_search(num_matches=FLAGS.num_repeated_map_values,
-                                                     max_steps=int(FLAGS.max_steps))
-
+                                                     max_steps=int(FLAGS.max_steps),
+                                                     all_pairs_max_size = int(FLAGS.all_pairs_max_size),
+                                                     num_tries = list(FLAGS.num_tries))
 
         Time = time.time() - startTime
         logging.info(f'total time = {Time}')
