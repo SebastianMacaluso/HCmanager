@@ -317,7 +317,7 @@ class GinkgoEvaluator:
         logging.info("-------------------------------------------")
         logging.info("=====++++++" * 5)
 
-        return [MAP_value, Time]
+        return [ - MAP_value, Time]
 
 
     @staticmethod
@@ -346,7 +346,7 @@ class GinkgoEvaluator:
         logging.info(f'FINAL f ={MAP_value}')
         logging.info("-------------------------------------------")
 
-        return [MAP_value, Time]
+        return [ - MAP_value, Time]
 
 
     #-------------
