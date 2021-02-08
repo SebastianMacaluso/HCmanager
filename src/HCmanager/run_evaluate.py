@@ -37,13 +37,13 @@ from AstarTrellis.iter_trellis_approx import IterJetTrellis as ApproxIterJetTrel
 # from ClusterTrellis.utils import get_logger
 # logger = logging.get_logger(level=logging.WARNING)
 
-NleavesMin=9
+NleavesMin=22
 tcut=2.5
-Ntrees = 5
+Ntrees = 1
 # powerset = 2**NleavesMin
 
 
-HPC=True
+HPC=False
 if HPC:
     flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
     flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
@@ -55,17 +55,23 @@ if HPC:
     # flags.DEFINE_string('output_dir', "../../data/Ginkgo/output/", "output dir ")
     # flags.DEFINE_string('results_filename', "out_jets_" + str(NleavesMin) + "N_" + str(Ntrees) + "trees_" + str(
     #     int(10 * tcut)) + "tcut_.pkl", 'results filename')
+    flags.DEFINE_string('algorithm', None, "Algorithm to run the scan")
 
 else:
     flags.DEFINE_integer('NleavesMin', NleavesMin, 'Number of elements of the trees datasets')
+    flags.DEFINE_string('dataset', "jets_22N_1trees_25tcut_28.pkl", 'dataset filename')
+    # flags.DEFINE_string('dataset', "test_" + str(NleavesMin) + "_jets.pkl", 'dataset filename')
+    # flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager",
+    #                     "wandb directory - If running seewp process, run it from there")
     # flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
-    flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
-    # flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
+    # flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
+
+    flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
     # flags.DEFINE_string('dataset', "jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'dataset filename')
-    # flags.DEFINE_string('dataset', "jets_6N_10trees_25tcut_0.pkl", 'dataset filename')
-    flags.DEFINE_string('dataset', "test_" + str(NleavesMin) + "_jets.pkl", 'dataset filename')
-    flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager",
+    flags.DEFINE_string("wandb_dir", "../..",
                         "wandb directory - If running seewp process, run it from there")
+
+    flags.DEFINE_string('algorithm', "BeamSearchGreedy", "Algorithm to run the scan")
 
 
 flags.mark_flag_as_required('NleavesMin')
@@ -74,7 +80,7 @@ flags.mark_flag_as_required('NleavesMin')
 # flags.DEFINE_string('a_star_trellis_class', 'IterJetTrellis', 'Type of Algorithm')
 # flags.DEFINE_string('trellis_class', 'Approx_IterJetTrellis', 'Type of Algorithm')
 
-flags.DEFINE_string('algorithm', None, "Algorithm to run the scan")
+
 flags.mark_flag_as_required('algorithm')
 
 
@@ -83,7 +89,7 @@ flags.mark_flag_as_required('algorithm')
 flags.DEFINE_string('output_dir', "../../data/Ginkgo/output/", "output dir ")
 flags.DEFINE_string('results_filename', "out_jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'results filename')
 
-flags.DEFINE_integer('max_steps', 500000, 'Maximum number of steps (Only relevant for the aprox. Astar algorithm')
+flags.DEFINE_integer('max_steps', 5000000000, 'Maximum number of steps (Only relevant for the aprox. Astar algorithm')
 # flags.DEFINE_integer('max_nodes', powerset + 10, 'nodes')
 flags.DEFINE_string('exp_name', 'AStar', 'name')
 flags.DEFINE_string('output', 'exp_out', 'output directory')
@@ -94,9 +100,9 @@ flags.DEFINE_integer('num_repeated_map_values', 0, 'number of times the same MAP
 flags.DEFINE_integer('propagate_values_up', 0, 'whether to propagate f,g,h values during trellis extension.')
 # flags.DEFINE_integer("beam_size", 3*NleavesMin, "Beam size") #Beam Search
 
-flags.DEFINE_integer('max_leaves', 14, 'Maximum number of leaves to run exact trellis and Astar algorithms')
-flags.DEFINE_integer('all_pairs_max_size', 12, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
-flags.DEFINE_multi_integer('num_tries', [3000,2048], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
+flags.DEFINE_integer('max_leaves', 20, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
+flags.DEFINE_integer('all_pairs_max_size', 10, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
+flags.DEFINE_multi_integer('num_tries', [25,15], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
 
 FLAGS = flags.FLAGS
 
@@ -115,6 +121,9 @@ class GinkgoEvaluator:
         self.likelihood_evaluations = {}
         self.times ={}
         self.tree_size = []
+        self.NodesExplored = {}
+        self.empty1 = {}
+        self.empty2 = {}
 
         # if os.path.exists(filename) and not redraw_existing_jets:
         self.trees = self._load()
@@ -178,25 +187,30 @@ class GinkgoEvaluator:
         temp = temp.transpose()
         log_likelihoods = temp[0]
         times = temp[1]
+        steps = temp[2]
+        self.NodesExplored[method] = temp[3]
         logging.info("log LH = %s", log_likelihoods)
         logging.info("times = %s", times)
         logging.info("+++++++"*10)
         # log_likelihoods = [self._compute_a_star_log_likelihood(jet)[0] for jet in self.trees]
         # times = [self._compute_a_star_log_likelihood(jet)[1] for jet in self.trees]
         illegal_actions = [0 for _ in self.trees]
-        likelihood_evaluations = [0 for _ in self.trees]
-        self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
+        # likelihood_evaluations = [0 for _ in self.trees]
+        self._update_results(method, log_likelihoods, illegal_actions, times, steps)
         logging.info(" A star MAP values = %s",log_likelihoods )
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
-    def eval_approx_a_star(self, method,  max_nodes = None):
-        temp = np.asarray([self._compute_approx_a_star_log_likelihood(jet,  max_nodes = max_nodes) for jet in self.trees])
+    def eval_approx_a_star(self, method, beam_size = 5, max_nodes = None, info=None):
+        temp = np.asarray([self._compute_approx_a_star_log_likelihood(jet,beam_size=beam_size, max_nodes = max_nodes) for jet in self.trees])
         temp = temp.transpose()
         log_likelihoods = temp[0]
         times = temp[1]
+        steps = temp[2]
+        self.NodesExplored[method] = temp[3]
+        self.empty1 = info
         illegal_actions = [0 for _ in self.trees]
-        likelihood_evaluations = [0 for _ in self.trees]
-        self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
+        # likelihood_evaluations = [0 for _ in self.trees]
+        self._update_results(method, log_likelihoods, illegal_actions, times, steps)
         logging.info(" Approx. star MAP values = %s",log_likelihoods )
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
@@ -207,6 +221,8 @@ class GinkgoEvaluator:
         self.illegal_actions[method] = illegal_actions
         self.times[method] = times
         self.likelihood_evaluations[method] = likelihood_evaluations
+
+
 
     # def _save(self):
     #     data = {"n_jets": self.n_jets, "jets": self.jets}
@@ -224,11 +240,17 @@ class GinkgoEvaluator:
             data = []
         return data
 
-    def save(self, output_dir):
-        out_file = os.path.join(output_dir,FLAGS.results_filename )
+    def save(self, output_dir, ApproxAstar=False):
+        if ApproxAstar:
+            run_details = "_MaxSize_"+str(FLAGS.all_pairs_max_size)+"_NumTries_"+str(FLAGS.num_tries[0])+"_"+str(FLAGS.num_tries[1])
+            filename = FLAGS.results_filename.strip().split(".")[0] + run_details + "." + FLAGS.results_filename .strip().split(".")[1]
+        else:
+            filename = FLAGS.results_filename
+
+        out_file = os.path.join(output_dir,filename)
         if os.path.exists(output_dir):
             with open(out_file, "wb") as f:
-                pickle.dump((self.tree_size,self.log_likelihoods, self.illegal_actions,self.times, self.likelihood_evaluations ), f, protocol=2)
+                pickle.dump((self.tree_size,self.log_likelihoods, self.illegal_actions,self.times, self.likelihood_evaluations, self.NodesExplored, self.empty1, self.empty2 ), f, protocol=2)
 
 
 
@@ -252,7 +274,7 @@ class GinkgoEvaluator:
 
 
     @staticmethod
-    def _compute_beam_search_log_likelihood(jet, beam_size = 5):
+    def _compute_beam_search_log_likelihood(jet, beam_size = 5, FullTree=False):
 
         startTime = time.time()
         # n = len(jet["leaves"])
@@ -268,7 +290,11 @@ class GinkgoEvaluator:
 
         Time = time.time() - startTime
 
-        return [sum(bs_jet["logLH"]), Time]
+        if FullTree:
+            return bs_jet
+
+        else:
+            return [sum(bs_jet["logLH"]), Time]
 
 
     @staticmethod
@@ -324,16 +350,17 @@ class GinkgoEvaluator:
         logging.info("-------------------------------------------")
         logging.info("=====++++++" * 5)
 
-        return [ - MAP_value, Time]
+        return [ - MAP_value, Time, step, trellis.nodes_explored]
 
 
-    @staticmethod
-    def _compute_approx_a_star_log_likelihood(tree,  max_nodes = None,max_leaves=11):
+    # @staticmethod
+    def _compute_approx_a_star_log_likelihood(self, tree, beam_size, max_nodes = None,max_leaves=11):
 
         # if len(tree["leaves"]) > max_leaves:
         #     return np.nan
 
         gt_jet = tree
+        logging.info("Truth Tree = %s", gt_jet)
         startTime = time.time()
 
         trellis = ApproxIterJetTrellis(leaves=gt_jet['leaves'],
@@ -343,17 +370,26 @@ class GinkgoEvaluator:
                                        Lambda=gt_jet['Lambda'],
                                        LambdaRoot=gt_jet['LambdaRoot'])
 
+        BeamSearchTree = self._compute_beam_search_log_likelihood(gt_jet, beam_size=beam_size, FullTree=True)
+        logging.info("Beam Search Tree = %s", BeamSearchTree)
+
+        trellis.Add_BeamSearchHC( BeamSearchTree,
+                         BeamSearchTree["root_id"],
+                         trellis.clusters[trellis.root])
+
         hc, MAP_value, step = trellis.execute_search(num_matches=FLAGS.num_repeated_map_values,
                                                      max_steps=int(FLAGS.max_steps),
                                                      all_pairs_max_size = int(FLAGS.all_pairs_max_size),
                                                      num_tries = list(FLAGS.num_tries))
+
+
 
         Time = time.time() - startTime
         logging.info(f'total time = {Time}')
         logging.info(f'FINAL f ={MAP_value}')
         logging.info("-------------------------------------------")
 
-        return [ - MAP_value, Time]
+        return [ - MAP_value, Time, step, trellis.nodes_explored]
 
 
     #-------------
@@ -396,7 +432,7 @@ def main(argv):
     os.system("mkdir -p "+FLAGS.output_dir)
     max_nodes = 2 ** FLAGS.NleavesMin + 10
     # beam_size = 3 * FLAGS.NleavesMin
-    beam_size = np.maximum(3 * FLAGS.NleavesMin, FLAGS.NleavesMin * (FLAGS.NleavesMin - 1) / 2)
+    beam_size = int(np.maximum(3 * FLAGS.NleavesMin, FLAGS.NleavesMin * (FLAGS.NleavesMin - 1) / 2))
 
 
     Evaluator = GinkgoEvaluator()
@@ -412,6 +448,16 @@ def main(argv):
         os.system("mkdir -p "+out_dir)
         Evaluator.save(out_dir)
 
+
+    if FLAGS.algorithm =="BeamSearchGreedy1000":
+        beam_size = 1000
+        logging.info("Beam Size =%s", beam_size)
+        Evaluator.eval_greedy("Greedy")
+        Evaluator.eval_beam_search("BS", beam_size = beam_size)
+
+        out_dir = os.path.join(FLAGS.output_dir, "BeamSearchGreedy1000")
+        os.system("mkdir -p "+out_dir)
+        Evaluator.save(out_dir)
 
     if FLAGS.algorithm == "ExactTrellis":
         Evaluator.eval_exact_trellis("exact_trellis", max_leaves=FLAGS.max_leaves)
@@ -429,11 +475,14 @@ def main(argv):
 
 
     if FLAGS.algorithm == "ApproxAstar":
-        Evaluator.eval_approx_a_star("approx_a_star", max_nodes =max_nodes)
+
+        logging.info("Beam Size =%s", beam_size)
+        details={"NumTries":FLAGS.num_tries,"all_pairs_max_size":FLAGS.all_pairs_max_size, "max_steps":FLAGS.max_steps}
+        Evaluator.eval_approx_a_star("approx_a_star", beam_size = beam_size, max_nodes =max_nodes, info=details)
 
         out_dir = os.path.join(FLAGS.output_dir, "ApproxAstar")
         os.system("mkdir -p "+out_dir)
-        Evaluator.save(out_dir)
+        Evaluator.save(out_dir, ApproxAstar=True)
 
 
 
