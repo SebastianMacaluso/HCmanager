@@ -43,7 +43,7 @@ Ntrees = 1
 # powerset = 2**NleavesMin
 
 
-HPC=False
+HPC=True
 if HPC:
     flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
     flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
@@ -102,7 +102,13 @@ flags.DEFINE_integer('propagate_values_up', 0, 'whether to propagate f,g,h value
 
 flags.DEFINE_integer('max_leaves', 20, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
 flags.DEFINE_integer('all_pairs_max_size', 10, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
-flags.DEFINE_multi_integer('num_tries', [25,15], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
+flags.DEFINE_multi_integer('num_tries', [5,3], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
+
+
+flags.DEFINE_boolean("exact_heuristic_proof", False, "If true run algorithm with exact heuristic that")
+flags.DEFINE_boolean("approx_heuristic", False, "If true run algorithm with approximate heuristic, if False then run it with a supposedly exact heuristic check on plots with up to 9 elements but with no proof")
+
+flags.DEFINE_boolean("exact_astar_approx_heuristic", False, "If true run exact a star using approx heuristics")
 
 FLAGS = flags.FLAGS
 
@@ -123,7 +129,8 @@ class GinkgoEvaluator:
         self.tree_size = []
         self.NodesExplored = {}
         self.empty1 = {}
-        self.empty2 = {}
+        # self.empty2 = {}
+        self.Ntrees = {}
 
         # if os.path.exists(filename) and not redraw_existing_jets:
         self.trees = self._load()
@@ -182,13 +189,14 @@ class GinkgoEvaluator:
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
 
-    def eval_exact_a_star(self, method, max_leaves=11, max_nodes = None):
+    def eval_exact_a_star(self, method, max_leaves=11,  max_nodes = None):
         temp = np.asarray([self._compute_a_star_log_likelihood(jet, max_leaves=max_leaves, max_nodes = max_nodes) for jet in self.trees])
         temp = temp.transpose()
         log_likelihoods = temp[0]
         times = temp[1]
         steps = temp[2]
         self.NodesExplored[method] = temp[3]
+        self.Ntrees[method]  = temp[4]
         logging.info("log LH = %s", log_likelihoods)
         logging.info("times = %s", times)
         logging.info("+++++++"*10)
@@ -200,13 +208,14 @@ class GinkgoEvaluator:
         logging.info(" A star MAP values = %s",log_likelihoods )
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
-    def eval_approx_a_star(self, method, beam_size = 5, max_nodes = None, info=None):
-        temp = np.asarray([self._compute_approx_a_star_log_likelihood(jet,beam_size=beam_size, max_nodes = max_nodes) for jet in self.trees])
+    def eval_approx_a_star(self, method, beam_size = 5, exact_heuristic_proof = False, approx_heuristic=False, max_nodes = None, info=None):
+        temp = np.asarray([self._compute_approx_a_star_log_likelihood(jet,beam_size=beam_size, exact_heuristic_proof = exact_heuristic_proof, approx_heuristic = approx_heuristic, max_nodes = max_nodes) for jet in self.trees])
         temp = temp.transpose()
         log_likelihoods = temp[0]
         times = temp[1]
         steps = temp[2]
         self.NodesExplored[method] = temp[3]
+        self.Ntrees[method]  = temp[4]
         self.empty1 = info
         illegal_actions = [0 for _ in self.trees]
         # likelihood_evaluations = [0 for _ in self.trees]
@@ -250,7 +259,7 @@ class GinkgoEvaluator:
         out_file = os.path.join(output_dir,filename)
         if os.path.exists(output_dir):
             with open(out_file, "wb") as f:
-                pickle.dump((self.tree_size,self.log_likelihoods, self.illegal_actions,self.times, self.likelihood_evaluations, self.NodesExplored, self.empty1, self.empty2 ), f, protocol=2)
+                pickle.dump((self.tree_size,self.log_likelihoods, self.illegal_actions,self.times, self.likelihood_evaluations, self.NodesExplored, self.empty1, self.Ntrees ), f, protocol=2)
 
 
 
@@ -350,11 +359,11 @@ class GinkgoEvaluator:
         logging.info("-------------------------------------------")
         logging.info("=====++++++" * 5)
 
-        return [ - MAP_value, Time, step, trellis.nodes_explored]
+        return [ - MAP_value, Time, step, trellis.nodes_explored, trellis.Ntrees]
 
 
     # @staticmethod
-    def _compute_approx_a_star_log_likelihood(self, tree, beam_size, max_nodes = None,max_leaves=11):
+    def _compute_approx_a_star_log_likelihood(self, tree, beam_size, exact_heuristic_proof = False, approx_heuristic=False, max_nodes = None,max_leaves=11):
 
         # if len(tree["leaves"]) > max_leaves:
         #     return np.nan
@@ -363,7 +372,9 @@ class GinkgoEvaluator:
         logging.info("Truth Tree = %s", gt_jet)
         startTime = time.time()
 
-        trellis = ApproxIterJetTrellis(leaves=gt_jet['leaves'],
+        trellis = ApproxIterJetTrellis(exact_heuristic_proof = exact_heuristic_proof,
+                                        approx_heuristic = approx_heuristic,
+                                       leaves=gt_jet['leaves'],
                                        propagate_values_up=FLAGS.propagate_values_up,
                                        max_nodes=max_nodes,
                                        min_invM=gt_jet['pt_cut'],
@@ -389,7 +400,7 @@ class GinkgoEvaluator:
         logging.info(f'FINAL f ={MAP_value}')
         logging.info("-------------------------------------------")
 
-        return [ - MAP_value, Time, step, trellis.nodes_explored]
+        return [ - MAP_value, Time, step, trellis.nodes_explored, trellis.Ntrees]
 
 
     #-------------
@@ -478,9 +489,13 @@ def main(argv):
 
         logging.info("Beam Size =%s", beam_size)
         details={"NumTries":FLAGS.num_tries,"all_pairs_max_size":FLAGS.all_pairs_max_size, "max_steps":FLAGS.max_steps}
-        Evaluator.eval_approx_a_star("approx_a_star", beam_size = beam_size, max_nodes =max_nodes, info=details)
+        Evaluator.eval_approx_a_star("approx_a_star",exact_heuristic_proof = FLAGS.exact_heuristic_proof, approx_heuristic=FLAGS.approx_heuristic, beam_size = beam_size, max_nodes =max_nodes, info=details)
 
-        out_dir = os.path.join(FLAGS.output_dir, "ApproxAstar")
+        if FLAGS.approx_heuristic==False:
+            out_dir = os.path.join(FLAGS.output_dir, "ApproxAstar")
+        else:
+            out_dir = os.path.join(FLAGS.output_dir, "ApproxAstarApproxHeuristic")
+
         os.system("mkdir -p "+out_dir)
         Evaluator.save(out_dir, ApproxAstar=True)
 
