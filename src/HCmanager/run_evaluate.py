@@ -102,11 +102,18 @@ flags.DEFINE_integer('propagate_values_up', 0, 'whether to propagate f,g,h value
 
 flags.DEFINE_integer('max_leaves', 20, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
 flags.DEFINE_integer('all_pairs_max_size', 10, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
-flags.DEFINE_multi_integer('num_tries', [5,3], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
+# flags.DEFINE_multi_integer('num_tries', [5,3], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
+flags.DEFINE_multi_integer('num_tries_m', 6, 'Number of samples to draw')
+flags.DEFINE_multi_integer('num_tries_k', 3, 'Best pair (based on likelihood) to keep')
+
+flags.DEFINE_integer('maxBeamJets', 10000000, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
+# flags.DEFINE_integer('maxBeamJets', 1, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
+flags.DEFINE_integer('max_nodes', None , 'Maximum number of nodes for the sparse trellis')
+flags.mark_flag_as_required('max_nodes')
 
 
-flags.DEFINE_boolean("exact_heuristic_proof", False, "If true run algorithm with exact heuristic that")
-flags.DEFINE_boolean("approx_heuristic", False, "If true run algorithm with approximate heuristic, if False then run it with a supposedly exact heuristic check on plots with up to 9 elements but with no proof")
+flags.DEFINE_boolean("exact_heuristic_proof", False, "If true run algorithm with exact heuristic that has a proof")
+flags.DEFINE_boolean("approx_heuristic", False, "If true run algorithm with approximate heuristic, if False then run it with a supposedly exact heuristic checked on plots with up to 9 elements but with no proof")
 
 flags.DEFINE_boolean("exact_astar_approx_heuristic", False, "If true run exact a star using approx heuristics")
 
@@ -117,9 +124,10 @@ logging.set_verbosity(logging.INFO)
 
 
 class GinkgoEvaluator:
-    def __init__(self, redraw_existing_jets=False):
+    def __init__(self, num_tries=None, redraw_existing_jets=False):
         # self.filename = filename
         # self.env = env
+        self.num_tries=num_tries
         self.redraw_existing_jets =redraw_existing_jets
         self.methods = []  # Method names
         self.log_likelihoods = {}  # Log likelihood results
@@ -251,7 +259,7 @@ class GinkgoEvaluator:
 
     def save(self, output_dir, ApproxAstar=False):
         if ApproxAstar:
-            run_details = "_MaxSize_"+str(FLAGS.all_pairs_max_size)+"_NumTries_"+str(FLAGS.num_tries[0])+"_"+str(FLAGS.num_tries[1])
+            run_details = "_MaxSize_"+str(FLAGS.all_pairs_max_size)+"_NumTries_"+str(self.num_tries[0])+"_"+str(self.num_tries[1])
             filename = FLAGS.results_filename.strip().split(".")[0] + run_details + "." + FLAGS.results_filename .strip().split(".")[1]
         else:
             filename = FLAGS.results_filename
@@ -283,24 +291,26 @@ class GinkgoEvaluator:
 
 
     @staticmethod
-    def _compute_beam_search_log_likelihood(jet, beam_size = 5, FullTree=False):
+    def _compute_beam_search_log_likelihood(jet, beam_size = 5,N_best=1, FullTree=False):
 
         startTime = time.time()
         # n = len(jet["leaves"])
-        bs_jet = beam_search.recluster(
+        bs_jets = beam_search.recluster(
             jet,
             # beamSize=min(beam_size, n * (n - 1) // 2),
             beamSize= beam_size,
             delta_min=jet["pt_cut"],
             lam=float(jet["Lambda"]),
-            N_best=1,
+            N_best=N_best,
             visualize=False,
-        )[0]
+        )
 
         Time = time.time() - startTime
 
+        bs_jet =bs_jets[0]
+
         if FullTree:
-            return bs_jet
+            return bs_jets
 
         else:
             return [sum(bs_jet["logLH"]), Time]
@@ -381,17 +391,19 @@ class GinkgoEvaluator:
                                        Lambda=gt_jet['Lambda'],
                                        LambdaRoot=gt_jet['LambdaRoot'])
 
-        BeamSearchTree = self._compute_beam_search_log_likelihood(gt_jet, beam_size=beam_size, FullTree=True)
-        logging.info("Beam Search Tree = %s", BeamSearchTree)
+        BeamSearchTrees = self._compute_beam_search_log_likelihood(gt_jet, beam_size=beam_size, N_best=beam_size,  FullTree=True)
+        logging.info("Number of Beam Search Trees= %s", len(BeamSearchTrees))
 
-        trellis.Add_BeamSearchHC( BeamSearchTree,
+        for BeamSearchTree in BeamSearchTrees[0: FLAGS.maxBeamJets]:
+            trellis.Add_BeamSearchHC( BeamSearchTree,
                          BeamSearchTree["root_id"],
                          trellis.clusters[trellis.root])
+
 
         hc, MAP_value, step = trellis.execute_search(num_matches=FLAGS.num_repeated_map_values,
                                                      max_steps=int(FLAGS.max_steps),
                                                      all_pairs_max_size = int(FLAGS.all_pairs_max_size),
-                                                     num_tries = list(FLAGS.num_tries))
+                                                     num_tries = list(self.num_tries))
 
 
 
@@ -437,16 +449,18 @@ def main(argv):
 
     wandb.init(project="%s" % (FLAGS.exp_name), dir=FLAGS.wandb_dir)
     wandb.config.update(flags.FLAGS)
-    logging.info("Num tries =%s", FLAGS.num_tries)
 
     np.random.seed(FLAGS.seed)
     os.system("mkdir -p "+FLAGS.output_dir)
     max_nodes = 2 ** FLAGS.NleavesMin + 10
     # beam_size = 3 * FLAGS.NleavesMin
     beam_size = int(np.maximum(3 * FLAGS.NleavesMin, FLAGS.NleavesMin * (FLAGS.NleavesMin - 1) / 2))
+    # beam_size = 1000
 
+    num_tries = np.asarray([FLAGS.num_tries_m, FLAGS.num_tries_k]).flatten()
+    logging.info("Num tries =%s", num_tries)
 
-    Evaluator = GinkgoEvaluator()
+    Evaluator = GinkgoEvaluator(num_tries=num_tries)
 
     Evaluator.eval_true("truth")
     
@@ -487,14 +501,29 @@ def main(argv):
 
     if FLAGS.algorithm == "ApproxAstar":
 
+        if FLAGS.NleavesMin >22:
+            max_nodes = FLAGS.max_nodes
         logging.info("Beam Size =%s", beam_size)
-        details={"NumTries":FLAGS.num_tries,"all_pairs_max_size":FLAGS.all_pairs_max_size, "max_steps":FLAGS.max_steps}
+        logging.info(" max_nodes =%s", max_nodes)
+        details={"NumTries":Evaluator.num_tries,"all_pairs_max_size":FLAGS.all_pairs_max_size, "max_steps":FLAGS.max_steps}
         Evaluator.eval_approx_a_star("approx_a_star",exact_heuristic_proof = FLAGS.exact_heuristic_proof, approx_heuristic=FLAGS.approx_heuristic, beam_size = beam_size, max_nodes =max_nodes, info=details)
 
-        if FLAGS.approx_heuristic==False:
-            out_dir = os.path.join(FLAGS.output_dir, "ApproxAstar")
+        if FLAGS.exact_heuristic_proof:
+            out_dir = os.path.join(FLAGS.output_dir, "ApproxAstarExactHeuristicProof")
+
+        elif FLAGS.approx_heuristic==False:
+
+            if FLAGS.maxBeamJets>1:
+                out_dir = os.path.join(FLAGS.output_dir, "ApproxAstarFullBeam")
+            else:
+                out_dir = os.path.join(FLAGS.output_dir, "ApproxAstar")
+
         else:
-            out_dir = os.path.join(FLAGS.output_dir, "ApproxAstarApproxHeuristic")
+            if FLAGS.exact_astar_approx_heuristic:
+                out_dir = os.path.join(FLAGS.output_dir, "ExactAstarApproxHeuristic")
+
+            else:
+                out_dir = os.path.join(FLAGS.output_dir, "ApproxAstarApproxHeuristicFullBeam")
 
         os.system("mkdir -p "+out_dir)
         Evaluator.save(out_dir, ApproxAstar=True)
@@ -506,6 +535,7 @@ def main(argv):
     logging.info("Illegal actions =  %s" , Evaluator.illegal_actions)
     logging.info("Times = %s ",   Evaluator.times)
     logging.info("Number of evaluations =  %s", Evaluator.likelihood_evaluations)
+    logging.info("saving output in %s", str(out_dir))
 
 if __name__ == '__main__':
     app.run(main)
