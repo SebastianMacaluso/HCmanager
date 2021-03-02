@@ -104,7 +104,3 @@ done
 
 ## to submit(for 3 jobs): sbatch --array 0-2 submitHPC_HCmanager.s
 
-
-
-
-jets_9_test_100.pkl
