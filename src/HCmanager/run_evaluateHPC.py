@@ -28,7 +28,8 @@ from ClusterTrellis.Ginkgo_node import ModelNode
 
 """ A star trellis """
 from AstarTrellis.iter_trellis_exact import IterJetTrellis
-from AstarTrellis.iter_trellis_approx import IterJetTrellis as ApproxIterJetTrellis
+# from AstarTrellis.iter_trellis_approx import IterJetTrellis as ApproxIterJetTrellis
+from AstarTrellis.iter_trellis_approx_fullbeam import IterJetTrellis as ApproxIterJetTrellis
 
 """Replace with model auxiliary scripts to calculate the energy function"""
 # from ClusterTrellis import Ginkgo_likelihood as likelihood
@@ -37,7 +38,7 @@ from AstarTrellis.iter_trellis_approx import IterJetTrellis as ApproxIterJetTrel
 # from ClusterTrellis.utils import get_logger
 # logger = logging.get_logger(level=logging.WARNING)
 
-NleavesMin=22
+NleavesMin=15
 tcut=2.5
 Ntrees = 1
 # powerset = 2**NleavesMin
@@ -59,19 +60,19 @@ if HPC:
 
 else:
     flags.DEFINE_integer('NleavesMin', NleavesMin, 'Number of elements of the trees datasets')
-    flags.DEFINE_string('dataset', "jets_22N_1trees_25tcut_28.pkl", 'dataset filename')
-    # flags.DEFINE_string('dataset', "test_" + str(NleavesMin) + "_jets.pkl", 'dataset filename')
+    # flags.DEFINE_string('dataset', "jets_80N_5trees_1tcut_0.pkl", 'dataset filename')
+    flags.DEFINE_string('dataset', "test_" + str(NleavesMin) + "_jets.pkl", 'dataset filename')
     # flags.DEFINE_string("wandb_dir", "/Users/sebastianmacaluso/Documents/HCmanager",
     #                     "wandb directory - If running seewp process, run it from there")
     # flags.DEFINE_integer('NleavesMin', None, 'Number of elements of the trees datasets')
-    # flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
+    flags.DEFINE_string('dataset_dir', "../../data/Ginkgo/input/", "dataset dir ")
 
-    flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
+    # flags.DEFINE_string('dataset_dir', "../../../ginkgo/data/invMassGinkgo/", "dataset dir ")
     # flags.DEFINE_string('dataset', "jets_"+str(NleavesMin)+"N_"+str(Ntrees)+"trees_"+str(int(10*tcut))+"tcut_.pkl", 'dataset filename')
     flags.DEFINE_string("wandb_dir", "../..",
                         "wandb directory - If running seewp process, run it from there")
 
-    flags.DEFINE_string('algorithm', "BeamSearchGreedy", "Algorithm to run the scan")
+    flags.DEFINE_string('algorithm', "ApproxAstar", "Algorithm to run the scan")
 
 
 flags.mark_flag_as_required('NleavesMin')
@@ -101,6 +102,7 @@ flags.DEFINE_integer('propagate_values_up', 0, 'whether to propagate f,g,h value
 # flags.DEFINE_integer("beam_size", 3*NleavesMin, "Beam size") #Beam Search
 
 flags.DEFINE_integer('max_leaves', 20, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
+<<<<<<< Updated upstream
 flags.DEFINE_integer('all_pairs_max_size', 10, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
 # flags.DEFINE_multi_integer('num_tries', [5,3], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
 flags.DEFINE_multi_integer('num_tries_m', 6, 'Number of samples to draw')
@@ -116,6 +118,14 @@ flags.DEFINE_boolean("exact_heuristic_proof", False, "If true run algorithm with
 flags.DEFINE_boolean("approx_heuristic", False, "If true run algorithm with approximate heuristic, if False then run it with a supposedly exact heuristic checked on plots with up to 9 elements but with no proof")
 
 flags.DEFINE_boolean("exact_astar_approx_heuristic", False, "If true run exact a star using approx heuristics")
+=======
+flags.DEFINE_integer('all_pairs_max_size', 7, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
+flags.DEFINE_multi_integer('num_tries', [8,5], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
+
+flags.DEFINE_integer('maxBeamJets', 10000000, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
+# flags.DEFINE_integer('maxBeamJets', 1, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
+
+>>>>>>> Stashed changes
 
 FLAGS = flags.FLAGS
 
@@ -142,7 +152,7 @@ class GinkgoEvaluator:
         self.BStrees=[]
 
         # if os.path.exists(filename) and not redraw_existing_jets:
-        self.trees = self._load()
+        self.trees = self._load()[0:1]
         logging.info("# Trees = %s", len(self.trees))
         logging.info("========"*5)
         # else:
@@ -297,7 +307,11 @@ class GinkgoEvaluator:
 
 
     @staticmethod
+<<<<<<< Updated upstream
     def _compute_beam_search_log_likelihood(jet, beam_size = 5,N_best=1, FullTree=False, MLEtree=False):
+=======
+    def _compute_beam_search_log_likelihood(jet, beam_size = 5, N_best=1, FullTree=False):
+>>>>>>> Stashed changes
 
         startTime = time.time()
         # n = len(jet["leaves"])
@@ -317,9 +331,12 @@ class GinkgoEvaluator:
 
         if FullTree:
             return bs_jets
+<<<<<<< Updated upstream
 
         elif MLEtree:
             return bs_jet
+=======
+>>>>>>> Stashed changes
 
         else:
             return [sum(bs_jet["logLH"]), Time]
