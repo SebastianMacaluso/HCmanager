@@ -139,6 +139,7 @@ class GinkgoEvaluator:
         self.empty1 = {}
         # self.empty2 = {}
         self.Ntrees = {}
+        self.BStrees=[]
 
         # if os.path.exists(filename) and not redraw_existing_jets:
         self.trees = self._load()
@@ -172,24 +173,29 @@ class GinkgoEvaluator:
         logging.info(" Greedy values = %s", log_likelihoods)
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
-    def eval_beam_search(self, method, beam_size=4):
-        temp = np.asarray([self._compute_beam_search_log_likelihood(jet) for jet in self.trees])
-        temp = temp.transpose()
-        log_likelihoods = temp[0]
-        times = temp[1]
-        illegal_actions = [0 for _ in self.trees]
-        likelihood_evaluations = [
-            self._compute_beam_search_likelihood_evaluations(jet, beam_size) for jet in self.trees
-        ]
-        self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
-        logging.info(" Beam Search values = %s", log_likelihoods)
-        # return log_likelihoods, illegal_actions, likelihood_evaluations
+    def eval_beam_search(self, method, beam_size=4, MLEtree=False):
+        if MLEtree:
+            temp = np.asarray([self._compute_beam_search_log_likelihood(jet, beam_size=beam_size, MLEtree=MLEtree) for jet in self.trees])
+            self.BStrees=temp
+        else:
+            temp = np.asarray([self._compute_beam_search_log_likelihood(jet, beam_size=beam_size) for jet in self.trees])
+            temp = temp.transpose()
+            log_likelihoods = temp[0]
+            times = temp[1]
+            illegal_actions = [0 for _ in self.trees]
+            likelihood_evaluations = [
+                self._compute_beam_search_likelihood_evaluations(jet, beam_size) for jet in self.trees
+            ]
+            self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
+            logging.info(" Beam Search values = %s", log_likelihoods)
+            # return log_likelihoods, illegal_actions, likelihood_evaluations
 
     def eval_exact_trellis(self, method, max_leaves=11):
         temp = np.asarray([self._compute_exact_trellis_log_likelihood(jet, max_leaves=max_leaves) for jet in self.trees])
         temp = temp.transpose()
         log_likelihoods = temp[0]
         times = temp[1]
+        self.empty1 = temp[2] #Partition function values
         illegal_actions = [0 for _ in self.trees]
         likelihood_evaluations = [0 for _ in self.trees]
         self._update_results(method, log_likelihoods, illegal_actions, times, likelihood_evaluations)
@@ -291,7 +297,7 @@ class GinkgoEvaluator:
 
 
     @staticmethod
-    def _compute_beam_search_log_likelihood(jet, beam_size = 5,N_best=1, FullTree=False):
+    def _compute_beam_search_log_likelihood(jet, beam_size = 5,N_best=1, FullTree=False, MLEtree=False):
 
         startTime = time.time()
         # n = len(jet["leaves"])
@@ -311,6 +317,9 @@ class GinkgoEvaluator:
 
         if FullTree:
             return bs_jets
+
+        elif MLEtree:
+            return bs_jet
 
         else:
             return [sum(bs_jet["logLH"]), Time]
@@ -341,7 +350,7 @@ class GinkgoEvaluator:
 
         Time = time.time() - startTime
 
-        return [map_energy, Time]
+        return [map_energy, Time,Z]
 
 
     @staticmethod
@@ -454,7 +463,7 @@ def main(argv):
     os.system("mkdir -p "+FLAGS.output_dir)
     max_nodes = 2 ** FLAGS.NleavesMin + 10
     # beam_size = 3 * FLAGS.NleavesMin
-    beam_size = int(np.maximum(3 * FLAGS.NleavesMin, FLAGS.NleavesMin * (FLAGS.NleavesMin - 1) / 2))
+    beam_size = int(np.minimum(np.maximum(3 * FLAGS.NleavesMin, FLAGS.NleavesMin * (FLAGS.NleavesMin - 1) / 2),1000))
     # beam_size = 1000
 
     num_tries = np.asarray([FLAGS.num_tries_m, FLAGS.num_tries_k]).flatten()
@@ -463,7 +472,24 @@ def main(argv):
     Evaluator = GinkgoEvaluator(num_tries=num_tries)
 
     Evaluator.eval_true("truth")
-    
+
+
+    if FLAGS.algorithm =="BeamSearchTrees":
+        """Save file with all MLE beam search trees"""
+        logging.info("Beam Size =%s", beam_size)
+        Evaluator.eval_beam_search("BS", beam_size = beam_size, MLEtree=True)
+
+        # logging.info("First tree =%s", Evaluator.BStrees[0])
+        out_dir = os.path.join(FLAGS.output_dir, "BeamSearchTrees")
+        os.system("mkdir -p "+out_dir)
+
+        filename = FLAGS.results_filename
+        out_file = os.path.join(out_dir,filename)
+        if os.path.exists(out_dir):
+            with open(out_file, "wb") as f:
+                pickle.dump(Evaluator.BStrees, f, protocol=2)
+
+
     if FLAGS.algorithm =="BeamSearchGreedy":
         logging.info("Beam Size =%s", beam_size)
         Evaluator.eval_greedy("Greedy")
