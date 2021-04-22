@@ -2,11 +2,13 @@ import os
 import pickle
 import string
 import time
-import logging
+
 import numpy as np
 import importlib
 import sys
-
+import torch
+print("torch version =",torch.__version__)
+from tqdm import tqdm
 
 import wandb
 
@@ -28,8 +30,32 @@ from ClusterTrellis.Ginkgo_node import ModelNode
 
 """ A star trellis """
 from AstarTrellis.iter_trellis_exact import IterJetTrellis
-# from AstarTrellis.iter_trellis_approx import IterJetTrellis as ApproxIterJetTrellis
-from AstarTrellis.iter_trellis_approx_fullbeam import IterJetTrellis as ApproxIterJetTrellis
+from AstarTrellis.iter_trellis_approx import IterJetTrellis as ApproxIterJetTrellis
+# from AstarTrellis.iter_trellis_approx_fullbeam import IterJetTrellis as ApproxIterJetTrellis
+
+
+""" Ginkgo Reinforcement Learning"""
+# sys.path.append("../")
+from ginkgo_rl import GinkgoRLInterface, PolicyMCTSAgent
+
+#settings to evaluate
+settings = {
+    "n_max": 40,
+    "n_min": 4,
+    "w_jet": False,
+    "w_rate": 3.0,
+    "qcd_rate": 1.5,
+    "pt_min": 1.1**2,
+    "qcd_mass": 30.0,
+    "w_mass": 80.0,
+    "jet_momentum": 400.0,
+    "jetdir": (1, 1, 1),
+    "beamsize": 100,
+    "n_mc_target": 5,
+    "n_mc_max": 200,
+    "device": torch.device("cpu"),
+}
+
 
 """Replace with model auxiliary scripts to calculate the energy function"""
 # from ClusterTrellis import Ginkgo_likelihood as likelihood
@@ -57,6 +83,7 @@ if HPC:
     # flags.DEFINE_string('results_filename', "out_jets_" + str(NleavesMin) + "N_" + str(Ntrees) + "trees_" + str(
     #     int(10 * tcut)) + "tcut_.pkl", 'results filename')
     flags.DEFINE_string('algorithm', None, "Algorithm to run the scan")
+    flags.DEFINE_string('RL_model', None, "Trained model to evaluate RL algorithms")
 
 else:
     flags.DEFINE_integer('NleavesMin', NleavesMin, 'Number of elements of the trees datasets')
@@ -83,6 +110,7 @@ flags.mark_flag_as_required('NleavesMin')
 
 
 flags.mark_flag_as_required('algorithm')
+flags.mark_flag_as_required('RL_model')
 
 
 
@@ -102,7 +130,7 @@ flags.DEFINE_integer('propagate_values_up', 0, 'whether to propagate f,g,h value
 # flags.DEFINE_integer("beam_size", 3*NleavesMin, "Beam size") #Beam Search
 
 flags.DEFINE_integer('max_leaves', 20, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
-<<<<<<< Updated upstream
+
 flags.DEFINE_integer('all_pairs_max_size', 10, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
 # flags.DEFINE_multi_integer('num_tries', [5,3], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
 flags.DEFINE_multi_integer('num_tries_m', 6, 'Number of samples to draw')
@@ -118,20 +146,24 @@ flags.DEFINE_boolean("exact_heuristic_proof", False, "If true run algorithm with
 flags.DEFINE_boolean("approx_heuristic", False, "If true run algorithm with approximate heuristic, if False then run it with a supposedly exact heuristic checked on plots with up to 9 elements but with no proof")
 
 flags.DEFINE_boolean("exact_astar_approx_heuristic", False, "If true run exact a star using approx heuristics")
-=======
-flags.DEFINE_integer('all_pairs_max_size', 7, 'Maximum number of elements of a node to run the exact algorithm - switch to approx. algo for more elements')
-flags.DEFINE_multi_integer('num_tries', [8,5], 'List with [Number of samples to draw, best pair (based on likelihood) to keep]')
 
-flags.DEFINE_integer('maxBeamJets', 10000000, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
-# flags.DEFINE_integer('maxBeamJets', 1, 'Maximum number of leaves to run exact trellis and Astar algorithms. If above, return NaN')
-
->>>>>>> Stashed changes
 
 FLAGS = flags.FLAGS
 
 logging.set_verbosity(logging.INFO)
 
 
+import logging as pythonlogger
+logger = pythonlogger.getLogger("We")
+pythonlogger.basicConfig(format="%(asctime)s %(levelname).1s: %(message)s", datefmt="%y-%m-%d %H:%M")
+
+silence_list = ["matplotlib", "ginkgo", "ClusterTrellis"]
+for key in pythonlogger.Logger.manager.loggerDict:
+    pythonlogger.getLogger(key).setLevel(pythonlogger.INFO)
+    for check_key in silence_list:
+        if check_key in key:
+            pythonlogger.getLogger(key).setLevel(pythonlogger.ERROR)
+            break
 
 class GinkgoEvaluator:
     def __init__(self, num_tries=None, redraw_existing_jets=False):
@@ -152,7 +184,7 @@ class GinkgoEvaluator:
         self.BStrees=[]
 
         # if os.path.exists(filename) and not redraw_existing_jets:
-        self.trees = self._load()[0:1]
+        self.trees = self._load()
         logging.info("# Trees = %s", len(self.trees))
         logging.info("========"*5)
         # else:
@@ -248,7 +280,32 @@ class GinkgoEvaluator:
         # return log_likelihoods, illegal_actions, likelihood_evaluations
 
 
-    ###------
+    def eval_ginkgoRL(self, method,grl):
+
+        # reclustered_jets = []
+        log_likelihoods = []
+        illegal_actions = []
+        likelihood_evaluations = []
+        times=[]
+
+        for jet in tqdm(self.trees):
+            startTime = time.time()
+            with torch.no_grad():
+
+                reclustered_jet, log_likelihood, error, likelihood_evaluation = grl._episode(jet, mode=None)
+
+            Time = time.time() - startTime
+
+            # reclustered_jets.append(reclustered_jet)
+            log_likelihoods.append(log_likelihood)
+            times.append(Time)
+            illegal_actions.append(error)
+            likelihood_evaluations.append(likelihood_evaluation)
+
+        self._update_results(method, np.asarray(log_likelihoods), np.asarray(illegal_actions), np.asarray(times), np.asarray(likelihood_evaluations))
+        logging.info(" Ginkgo RL MAP values = %s",log_likelihoods )
+
+    ###------------------------------------------------------
     def _update_results(self, method, log_likelihoods, illegal_actions, times, likelihood_evaluations):
         self.log_likelihoods[method] = log_likelihoods
         self.illegal_actions[method] = illegal_actions
@@ -307,11 +364,9 @@ class GinkgoEvaluator:
 
 
     @staticmethod
-<<<<<<< Updated upstream
+
+
     def _compute_beam_search_log_likelihood(jet, beam_size = 5,N_best=1, FullTree=False, MLEtree=False):
-=======
-    def _compute_beam_search_log_likelihood(jet, beam_size = 5, N_best=1, FullTree=False):
->>>>>>> Stashed changes
 
         startTime = time.time()
         # n = len(jet["leaves"])
@@ -331,12 +386,9 @@ class GinkgoEvaluator:
 
         if FullTree:
             return bs_jets
-<<<<<<< Updated upstream
 
         elif MLEtree:
             return bs_jet
-=======
->>>>>>> Stashed changes
 
         else:
             return [sum(bs_jet["logLH"]), Time]
@@ -571,6 +623,20 @@ def main(argv):
         os.system("mkdir -p "+out_dir)
         Evaluator.save(out_dir, ApproxAstar=True)
 
+    if FLAGS.algorithm == "RL":
+        # Location of trained model to load
+        state_dict_filename = "/scratch/sm4511/ginkgo-rl/experiments/data/runs/"+str(FLAGS.RL_model)+"/model.pty"
+
+        logging.info("Model = ", torch.load(state_dict_filename))
+
+        grl = GinkgoRLInterface(state_dict_filename, **settings)
+
+        logging.info("Reinforcement learning parameters =%s", settings)
+        Evaluator.eval_ginkgoRL("RL",grl)
+
+        out_dir = os.path.join(FLAGS.output_dir, "RL")
+        os.system("mkdir -p "+out_dir)
+        Evaluator.save(out_dir)
 
 
     logging.info("Tree size =%s",Evaluator.tree_size)
